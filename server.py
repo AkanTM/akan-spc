@@ -1,8 +1,10 @@
 import sys
 import socket
 import threading
-from utils import *
 import ast
+from Crypto.Random import random
+from utils import *
+
 
 user_dict = {}
 
@@ -30,14 +32,24 @@ def handle_connection(conn, addr):
 			del user_dict[user]
 			return 
 
+		elif mtype == GET_SALT:
+			dest_user = message
+
+			salt = random.getrandbits(plaintext_len)
+			
+			user_dict[dest_user].sendall( str( (user, SALT, salt ) ) )
+
+			user_dict[user].sendall( str( (dest_user, SALT, salt ) ) )
+
+
 		elif  mtype == FWD_TO:
-			[ dest_user, salt, enc ] = message
+			[ dest_user, enc ] = message
 
 
 			if dest_user in user_dict:
 				print "Forward message to user %s from %s." %(dest_user, user)
 
-				user_dict[dest_user].sendall( str( (user, FIRST_STEP, [salt, enc] ) ) )
+				user_dict[dest_user].sendall( str( (user, FIRST_STEP, [enc] ) ) )
 
 			else:
 				print "Cannot forward message to %s. User does not exist." %dest_user

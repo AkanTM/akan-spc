@@ -5,6 +5,8 @@ import threading
 import binascii
 import Crypto
 import signal
+import time
+from datetime import datetime
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
 from Crypto.Random import random
@@ -18,8 +20,10 @@ location = None
 #location = "44.445173,26.056056"
 
 user_dict = {}
+salts = {}
 
-
+tstart = 0
+tend = 0
 
 def signal_handler(signal, frame):
 	global s
@@ -55,14 +59,14 @@ def get_key_from_data(data):
 
 	return key.digest()
 
-def create_enc():
+def create_enc(salt):
 
 	plaintext = random.getrandbits( plaintext_len )
 
 	debug( "Plaintext: %s" %get_hex( random.long_to_bytes(plaintext) ))
 	
 	# 32 length key
-	salt = random.getrandbits(plaintext_len)
+	#salt = random.getrandbits(plaintext_len)
 	
 
 	key = get_key_from_data( random.long_to_bytes(salt) + get_location() )
@@ -71,22 +75,32 @@ def create_enc():
 	debug( "Encrypted: %s" % get_hex(enc) )
 
 
-	return (plaintext, salt, enc)
+	return (plaintext, enc)
 
 
 def wait_connection():
 
 	global s 
+	global tstart
+	global tend
+	global user
+
+	global salts
 	while 1:
 		data = s.recv(1024)
 
 		(dest_user, mtype, emessage) = ast.literal_eval(data)
 
-		if mtype == FIRST_STEP:
+		if mtype == SALT:
 
-			[salt, enc_message] = emessage
+			salts[dest_user] = emessage
 
-			key = get_key_from_data( random.long_to_bytes(salt) + get_location() )
+
+		elif mtype == FIRST_STEP:
+
+			[enc_message] = emessage
+
+			key = get_key_from_data( random.long_to_bytes(salts[dest_user]) + get_location() )
 			aes = AES.new( key )
 			message = aes.decrypt(enc_message)
 
@@ -122,6 +136,11 @@ def wait_connection():
 
 		elif mtype == FINAL:
 
+			tend = datetime.now()
+
+			del salts[dest_user]
+
+			print tend - tstart
 			print "I am user %s " %user
 			
 
@@ -137,6 +156,8 @@ def wait_connection():
 def main():
 
 
+	global tstart
+	global tend
 	signal.signal(signal.SIGINT, signal_handler)
 	
 
@@ -164,13 +185,20 @@ def main():
 	
 	while 1:
 		dest_user = raw_input("Trimite catre user: ")
+		tstart = datetime.now()
 
 		if dest_user:
-			(plaintext, salt, enc) = create_enc()
+
+			s.sendall( str((user, GET_SALT, dest_user)))
+
+			while dest_user not in salts:
+				time.sleep(0.5)
+
+			(plaintext, enc) = create_enc( salts[dest_user])
 
 			user_dict[ dest_user ] = get_key_from_data( random.long_to_bytes(plaintext) )
 
-			message = [dest_user, salt, enc]
+			message = [dest_user, enc]
 
 			s.sendall( str( (user, FWD_TO, message) ) )
 
