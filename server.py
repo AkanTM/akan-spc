@@ -43,13 +43,13 @@ def handle_connection(conn, addr):
 
 
 		elif  mtype == FWD_TO:
-			[ dest_user, enc ] = message
+			[ dest_user, distance, enc ] = message
 
 
 			if dest_user in user_dict:
 				print "Forward message to user %s from %s." %(dest_user, user)
 
-				user_dict[dest_user].sendall( str( (user, FIRST_STEP, [enc] ) ) )
+				user_dict[dest_user].sendall( str( (user, FIRST_STEP, [distance, enc] ) ) )
 
 			else:
 				print "Cannot forward message to %s. User does not exist." %dest_user

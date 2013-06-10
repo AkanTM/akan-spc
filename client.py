@@ -21,6 +21,7 @@ location = None
 
 user_dict = {}
 salts = {}
+distance = 0
 
 tstart = 0
 tend = 0
@@ -43,11 +44,20 @@ def get_hex(data):
 	return binascii.b2a_hex(data)
 
 
-def get_location():
+def get_location(r):
 	"""
-	this should provide the actual location of the client
+	this should provide the relative location of the client 
 	"""
-	return location
+
+	x = float(location.split(",")[0])
+	y = float(location.split(",")[1])
+
+
+	u = int(x * 1000000 / r)
+	v = int(y* 1000000 / r )
+
+
+	return str(u)+","+str(v)
 
 def get_key_from_data(data):
 	"""
@@ -59,7 +69,7 @@ def get_key_from_data(data):
 
 	return key.digest()
 
-def create_enc(salt):
+def create_enc(salt, r):
 
 	plaintext = random.getrandbits( plaintext_len )
 
@@ -69,7 +79,7 @@ def create_enc(salt):
 	#salt = random.getrandbits(plaintext_len)
 	
 
-	key = get_key_from_data( random.long_to_bytes(salt) + get_location() )
+	key = get_key_from_data( random.long_to_bytes(salt) + get_location(r) )
 	aes = AES.new( key )
 	enc =  aes.encrypt( random.long_to_bytes(plaintext) ) 
 	debug( "Encrypted: %s" % get_hex(enc) )
@@ -93,18 +103,21 @@ def wait_connection():
 
 		if mtype == SALT:
 
+			print "Received salt: ", get_hex(random.long_to_bytes(emessage))
+
 			salts[dest_user] = emessage
 
 
 		elif mtype == FIRST_STEP:
 
-			[enc_message] = emessage
+			[r, enc_message] = emessage
 
-			key = get_key_from_data( random.long_to_bytes(salts[dest_user]) + get_location() )
+			key = get_key_from_data( random.long_to_bytes(salts[dest_user]) + get_location(r) )
 			aes = AES.new( key )
 			message = aes.decrypt(enc_message)
 
-			
+			del salts[dest_user]
+
 			debug( "Decrypted: %s" % get_hex( message ) )
 			
 
@@ -123,6 +136,9 @@ def wait_connection():
 			s.sendall( str(  (user, SECOND_STEP, message) ))
 
 		elif mtype == SECOND_STEP:
+
+			del salts[dest_user]
+			
 			aes = AES.new( user_dict[dest_user] )
 
 			debug( "Received text to decrypt: %s" %get_hex(emessage) )
@@ -138,7 +154,7 @@ def wait_connection():
 
 			tend = datetime.now()
 
-			del salts[dest_user]
+			
 
 			print tend - tstart
 			print "I am user %s " %user
@@ -165,10 +181,23 @@ def main():
 	global user_dict
 	global user
 	global location
-
+	global distance
 
 	user = raw_input("Enter your username: ")
-	location = raw_input("Enter your location: ")
+	
+
+	while 1 == 1:
+
+		location = raw_input("Enter your location: ")
+
+		try:
+			x = float(location.split(",")[0])
+			y = float(location.split(",")[1])
+			break
+		except:
+			print "[ERR] Formatul trebuie sa fie de forma: X,Y"
+			print "[ERR] Unde X si Y sunt coordonate geografice"
+			continue
 
 
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -181,9 +210,13 @@ def main():
 	t.start()
 
 
-	
+	distance = int( raw_input("Distanta de cautare: ") )
 	
 	while 1:
+
+		
+
+
 		dest_user = raw_input("Trimite catre user: ")
 		tstart = datetime.now()
 
@@ -194,11 +227,11 @@ def main():
 			while dest_user not in salts:
 				time.sleep(0.5)
 
-			(plaintext, enc) = create_enc( salts[dest_user])
+			(plaintext, enc) = create_enc( salts[dest_user], distance)
 
 			user_dict[ dest_user ] = get_key_from_data( random.long_to_bytes(plaintext) )
 
-			message = [dest_user, enc]
+			message = [dest_user, distance, enc]
 
 			s.sendall( str( (user, FWD_TO, message) ) )
 
